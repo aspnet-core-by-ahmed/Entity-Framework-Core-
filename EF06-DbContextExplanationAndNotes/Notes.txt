@@ -1,0 +1,230 @@
+Note [1] :
+=============================================================
+WHY WE CAN USE "using" WITH AppDbContext
+=============================================================
+
+1- AppDbContext inherits from DbContext
+public class AppDbContext : DbContext { ... }
+
+2- DbContext implements IDisposable interface - IDisposable is a .NET interface that allows an object to release unmanaged resources - When a class implements IDisposable, you can use it inside a "using" block
+to automatically call Dispose() at the end of the block
+
+3- What happens with "using"
+
+Example:
+using (var context = new AppDbContext())
+{
+// Do database operations here
+var wallets = context.Wallets.ToList();
+} // At this point, Dispose() is automatically called
+
+- Connections are closed
+- Resources are released
+
+4- Benefits:
+
+- Ensures the database connection is closed automatically
+- Prevents memory leaks
+- Cleaner and safer code
+
+=============================================================
+
+Summary:
+You can use "using" with AppDbContext because it inherits DbContext,
+and DbContext implements IDisposable. This allows automatic resource management.
+
+Note [2] :
+
+=============================================================
+UNIT OF WORK CONCEPT IN C# / EF CORE
+=============================================================
+
+1- Definition:
+The Unit of Work (UoW) pattern maintains a list of changes
+(insert, update, delete) and applies them as a single transaction
+when saving to the database.
+
+2- Why it's useful:
+
+- Ensures all related operations succeed or fail together (transactional integrity)
+- Reduces multiple database calls
+- Keeps your data access logic organized and consistent
+
+3- How it works in EF Core:
+
+- DbContext itself acts as a Unit of Work
+- It tracks all changes to entities (DbSet<T>)
+- When you call SaveChanges() or SaveChangesAsync(),
+  all tracked changes are committed to the database in a single transaction
+
+Example:
+
+using (var context = new AppDbContext())
+{
+var wallet = new Wallet { Name = "MyWallet", Balance = 1000 };
+context.Wallets.Add(wallet); // Track new entity
+
+    var existingWallet = context.Wallets.First();
+    existingWallet.Balance += 500; // Track update
+
+    context.SaveChanges();         // Commit both insert & update together
+
+}
+
+4- Benefits:
+
+- Atomic operations: either all succeed or none
+- Reduces bugs from partial updates
+- Simplifies managing transactions in the app
+
+=============================================================
+
+Summary:
+In EF Core, DbContext + SaveChanges() = built-in Unit of Work
+Use it to track multiple operations and commit them as a single transaction.
+
+Note [3] : Using Keyword deep dive
+
+# ================================================================
+
+# **Using Keyword**
+
+# ================================================================
+
+/**********************\*\*\***********************
+
+- What is the Using Keyword?
+  **********************\*\*\***********************/
+  // The "using" keyword in C# has two main uses:
+  // 1. As a directive at the top of a file: like "using System;" to import namespaces so you can use classes without full paths.
+  // 2. As a statement: like "using var file = new StreamReader(...);" to automatically clean up resources that implement IDisposable.
+  // In this explanation, we focus on the "using" statement because it's common in code like DbContext for disposing objects.
+  // Function: It ensures that objects (like files, database connections) are properly closed or disposed after use, even if there's an error.
+  // This prevents memory leaks or locked resources.
+  // Equivalent: You can use a try-finally block to call Dispose() manually.
+  // We will show the problem without using, then solutions with examples.
+
+using System;
+
+class Program
+{
+static void Main()
+{
+Console.WriteLine("The using keyword helps manage resources safely.");
+}
+}
+
+# ================================================================
+
+# **Resource Management & Using**
+
+# ================================================================
+
+/**********************\*\*\***********************
+
+- Resource Management Problem
+  **********************\*\*\***********************/
+  // Problem: Some objects, like file streams or DbContext, use system resources (files, connections).
+  // They implement IDisposable, so you must call Dispose() to free resources.
+  // If you forget to Dispose(), it can cause memory leaks, locked files, or open connections.
+  // Example: Open a file without proper cleanup. If an error happens, the file stays locked.
+  // This code might work, but if there's an exception, Dispose() is not called.
+
+using System;
+using System.IO;
+
+class Program
+{
+static void Main(string[] args)
+{
+// Create a file stream without using - bad practice!
+StreamWriter writer = new StreamWriter("example.txt");
+writer.WriteLine("Hello, world!"); // Write to file.
+
+        // Simulate some work or error.
+        // If an exception happens here, Dispose() is not called, file stays open.
+        // throw new Exception("Error!"); // Uncomment to see problem.
+
+        writer.Dispose(); // Manually dispose - but easy to forget!
+        Console.WriteLine("File written, but cleanup might fail if error occurs.");
+    }
+
+}
+// After running, if error, file might be locked and can't be deleted until program ends.
+
+# ================================================================
+
+# **Solutions for Resource Management**
+
+# ================================================================
+
+/**********************\*\*\***********************
+
+- Solution 1 — Using Statement
+  **********************\*\*\***********************/
+  // Solution: Use the "using" statement. It automatically calls Dispose() at the end of the block, even if there's an error.
+  // This is simple and safe. It's like a shortcut for try-finally.
+  // Function: Defines a scope where the resource is used, and disposes it when exiting the scope.
+  // Example: Write to a file with using. Even if error, file is closed properly.
+
+using System;
+using System.IO;
+
+class Program
+{
+static void Main(string[] args)
+{
+// Using statement for safe resource management.
+using (StreamWriter writer = new StreamWriter("example.txt"))
+{
+writer.WriteLine("Hello, world!"); // Write to file.
+
+            // Simulate error - using still calls Dispose()!
+            // throw new Exception("Error!"); // Uncomment to test.
+        } // Dispose() called here automatically.
+
+        Console.WriteLine("File written and safely closed, even with errors.");
+    }
+
+}
+// After running, file is always closed, no locks.
+
+/**********************\*\*\***********************
+
+- Solution 2 — Equivalent with Try-Finally
+  **********************\*\*\***********************/
+  // Solution: Without "using", use try-finally block to manually call Dispose().
+  // This is the equivalent of what "using" does under the hood.
+  // Function: Try block for code, finally ensures Dispose() runs no matter what.
+  // It's more code, but works the same. Use when you need more control.
+  // Example: Same file writing, but with try-finally instead of using.
+
+using System;
+using System.IO;
+
+class Program
+{
+static void Main(string[] args)
+{
+StreamWriter writer = null; // Declare outside for finally.
+try
+{
+writer = new StreamWriter("example.txt");
+writer.WriteLine("Hello, world!"); // Write to file.
+
+            // Simulate error - finally still runs!
+            // throw new Exception("Error!"); // Uncomment to test.
+        }
+        finally
+        {
+            if (writer != null)
+            {
+                writer.Dispose(); // Manually dispose in finally.
+            }
+        }
+
+        Console.WriteLine("File written and safely closed using try-finally.");
+    }
+
+}
+// After running, file is always closed, same as using statement.
