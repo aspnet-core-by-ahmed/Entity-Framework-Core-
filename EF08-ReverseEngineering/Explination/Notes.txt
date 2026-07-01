@@ -1,0 +1,68 @@
+﻿// =============================================
+// EF Core Notes - Packages & Scaffold Issues
+// =============================================
+
+// =============================================
+// 1) Ways to Download NuGet Packages
+// Example: Microsoft.EntityFrameworkCore.Tools
+// =============================================
+
+// 1- Add package manually inside EF008.csproj:
+// <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0">
+//   <PrivateAssets>all</PrivateAssets>
+//   <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+// </PackageReference>
+
+// 2- Install from Visual Studio:
+// Right-click on project → Manage NuGet Packages → Search for package → Install
+
+// 3- Install using PMC (Package Manager Console):
+// Install-Package Microsoft.EntityFrameworkCore.Tools  -Version 9.0.0
+// * Make sure the correct project is selected in the PMC dropdown.
+
+// 4- Install using .NET CLI:
+// dotnet add package Microsoft.EntityFrameworkCore.Tools --version 9.0.0
+// * Ensure the terminal path is inside the project folder (.csproj directory)
+// * Use cd / dir / pwd to navigate.
+
+// ------------------------------------------------------------------------------------
+// 2) Notes About Scaffold Errors & Solution Build Problems
+// ------------------------------------------------------------------------------------
+
+// Why does Scaffold-DbContext fail sometimes?
+// Because EF Core tries to build the *entire solution*, not just the selected project.
+// If ANY project in the solution has errors, scaffold fails.
+
+// ======================
+// Quick Fixes
+// ======================
+
+// 1) Fastest Solution:
+// Use CLI flags to specify project + startup project so EF ignores broken projects.
+
+// Example:
+// dotnet ef dbcontext scaffold "Your_Connection_String" Microsoft.EntityFrameworkCore.SqlServer -o Entities --project "YourProjectName" --startup-project "YourProjectName"
+
+// Or using PMC:
+// Scaffold-DbContext "Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;TrustServerCertificate=True" Microsoft.EntityFrameworkCore.SqlServer -OutputDir Entities
+
+
+// 2) Best Long-term Solution:
+// Fix all errors in all projects.
+// EF Migrations / Build / Scaffold will continue to fail otherwise.
+
+
+// 3) Quick Workaround:
+// Unload broken projects.
+// Right-click project → Unload Project
+// Run Scaffold
+// Reload project again afterward.
+
+// ======================
+// Build fails? Scaffold stops?
+// ======================
+// Scaffold in PMC stops immediately if any project in the solution has a build error.
+
+// Solutions:
+// 1) Fix errors in other projects
+// 2) OR unload broken projects temporarily

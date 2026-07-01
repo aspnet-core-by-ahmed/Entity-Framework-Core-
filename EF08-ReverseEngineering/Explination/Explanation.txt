@@ -1,0 +1,257 @@
+﻿
+ ===============================================================================================
+       ======================== Reverse Engineering [Scaffold] ==============================
+ ===============================================================================================
+
+
+ ===> **1- Introduction**
+
+ mainly how database schema == code schema and vice versa
+ Keep Database Schema and Code in Sync
+ We have Data Source and Application
+ EF Core ORM [Object relational mapper] between them,
+  so how I Keep Database Schema and Code in Sync
+
+ EF Core gives me two ways to do this:
+ 1- Code as source of truth =>
+ I do modifications on code and to move these modifications to database,
+ I do [migrations] and after doing this, database updates to be sync.
+ [Code First by migration]
+
+ 2- DB Schema is source of truth =>
+ this mean if there are modifications,
+ I do it first on database and after this I do [Reverse Engineering]
+ to make code sync and move modifications to it. [Database First by scaffold]
+
+
+
+ Advice: New project (project is a green field) -> 
+ start with code [code first with migrations] and programmer is powerful in coding
+
+
+ Advice: Old project (project is not a green field) and database already exists -> 
+ use Database first [Scaffold]
+
+
+=========================================================================================================================================================
+
+    
+ ===> **2- DataBase First (Scaffolding)**
+
+ suppose u want to create app to make events
+ Example1: Jhon Smith "The power of software" Jan 10th 2023 10h00 - 11h00
+ Example2: Peter Kios "The Romour's weapon" Jan 10th 2023 12h00 - 13h00
+
+
+ u will have two table is database:
+ Speakers -> Id(PK) , FirstName , LastName
+ Events -> Id(PK) , Title , StartAt , EndAt , SpeakerId(FK)
+
+ I will use reverse Engineering
+ what is it => process of scaffolding entity type classes and DbContext based on schema
+ Reverse Engineering = Process of generating EF Core Model (entities + DbContext) from DB Schema.
+
+ In programming, **scaffolding** means:
+ automatically [generating code] or [creating the basic structure of the code],
+ similar to how scaffolds support a building during construction.
+ Here, EF generates the code and entities automatically to make your work easier.
+
+
+ How it works:
+ 1- Reading DB Schema
+ 2- Generate EF-Core Model based on DB
+ 3- Uses EF-Core Model to Generate Code (EF Core engine do this)
+
+ Limitations:
+ 1- Providers not equal
+ 2- Data Type support / provider
+ 3- ConCurrency token in EF-Core issue
+
+
+ Pre-Requisite:
+ 1- PMC tool / dotnet CLI tool
+ 2- Microsoft.EntityFrameworkCore.Design
+ 3- Install the provider for database Schema [in our case => sqlserver]
+
+=========================================================================================================================================================
+   
+ ===> **3- Reverse Engineering (Scaffolding) PMC [Package manager console]**
+
+ 1- I create database , i created it and put code in folder [scripts]
+
+ 2- Open Package Manager Console(PMC)[window in VS]
+                  to open : Tools -> NuGet Package Manager -> Package Manager Console
+
+ 3- Go to PMC Tool
+ Install-Package Microsoft.EntityFrameworkCore.Design
+
+ 4- Go to PMC Tool
+ Install-Package Microsoft.EntityFrameworkCore.SqlServer [provider]
+
+ 5- Go to PMC Tool
+ [Scaffold-DbContext 'Data Source = . ; Initial Catalog = TechTalk ;
+ Integrated Security = SSPI ; TrustServerCertificate = True' 
+ Microsoft.EntityFrameworkCore.SqlServer]
+
+ Note : u must Install package of Microsoft.EntityFrameWorkCore.Tools
+
+Note: if this command
+ [Scaffold-DbContext 'Data Source=.;Initial Catalog=TechTalk;
+ Integrated Security=SSPI;TrustServerCertificate=True' Microsoft.EntityFrameworkCore.SqlServer]
+ 
+ does not work -> u can use :
+ [dotnet ef dbcontext scaffold 
+ "Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;TrustServerCertificate=True"
+ Microsoft.EntityFrameworkCore.SqlServer]
+ but u must go to prject folder and use terminal then write it
+ after doing this u will see that he create and put into project [partial classes to tables] and [class ({DatabaseName}Context)] so u will see :
+ 1- Speakers class
+ 2- Events class
+ 3- TechTalkContext class
+
+
+ ------------------------
+
+ Q / Can i say to Scaffold to use Data annotation ?
+ yes , u can commands:
+ in PMC =>
+ [Scaffold-DbContext 'Data Source=.;Initial Catalog=TechTalk;
+ Integrated Security=SSPI;TrustServerCertificate=True'
+ Microsoft.EntityFrameworkCore.SqlServer -DataAnnotations]
+
+ in terminal => 
+ [dotnet ef dbcontext scaffold "Data Source=.;Initial Catalog=TechTalk;
+ Integrated Security=SSPI;TrustServerCertificate=True"
+ Microsoft.EntityFrameworkCore.SqlServer --data-annotations]
+
+
+ u will see that all configuration done in class files
+ but if u do not add Data annotation , u will see that all configureation will be in context file
+ --data-annotations and -DataAnnotations are switches
+
+ there are alot of switches like =>
+ -UseDatabaseNames -> do not use conventions , 
+ just be equals complitly to database and fuck conventions
+
+ ------------------------
+
+ if u want to make DbContext file that his name now is TechTalkContext be ["What you want"]
+ u can use commands:
+
+ in PMC =>
+ [Scaffold-DbContext 'Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;
+ TrustServerCertificate=True' Microsoft.EntityFrameworkCore.SqlServer -Context AppDbContext]
+
+
+ in terminal => 
+ [dotnet ef dbcontext scaffold "Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;
+ TrustServerCertificate=True" Microsoft.EntityFrameworkCore.SqlServer --context AppDbContext]
+
+ ------------------------
+
+ if i want to make files i folders ,
+ i mean class or entities in folder called [Entities] and context file in folder called [Data]
+ 
+ u can use commands:
+
+ in PMC =>
+ [Scaffold-DbContext 'Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;
+ TrustServerCertificate=True' Microsoft.EntityFrameworkCore.SqlServer
+ -Context AppDbContext -ContextDir Data -OutputDir Entities]
+
+
+ in terminal =>
+ [dotnet ef dbcontext scaffold "Data Source=.;Initial Catalog=TechTalk;
+ Integrated Security=SSPI;TrustServerCertificate=True" Microsoft.EntityFrameworkCore.SqlServer
+ --context AppDbContext --context-dir Data --output-dir Entities]
+
+
+=========================================================================================================================================================
+    
+    
+ ===> **4- How do Specify to specific table**
+
+
+in your database that called [TechTalk]
+u have two tables [Speakers , Events] in same schema called [dbo]
+i will delete Entities folder and Data Folder
+and u can use commands to control Schema:
+i told him here to get all entites that follow specific schema , here schema is dbo
+
+in PMC =>
+[Scaffold-DbContext 'Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;
+TrustServerCertificate=True' Microsoft.EntityFrameworkCore.SqlServer
+-Context AppDbContext -ContextDir Data -OutputDir Entities -Schema dbo]
+
+
+in terminal => 
+[dotnet ef dbcontext scaffold "Data Source=.;Initial Catalog=TechTalk;
+Integrated Security=SSPI;TrustServerCertificate=True" Microsoft.EntityFrameworkCore.SqlServer
+--context AppDbContext --context-dir Data --output-dir Entities --schema dbo]
+
+------------------------
+
+
+==> if u want a specific table u can use :
+
+in PMC =>
+[Scaffold-DbContext 'Data Source=.;Initial Catalog=TechTalk;Integrated Security=SSPI;
+TrustServerCertificate=True' Microsoft.EntityFrameworkCore.SqlServer
+-Context AppDbContext -ContextDir Data -OutputDir Entities -Tables Speakers]
+
+
+in terminal =>
+[dotnet ef dbcontext scaffold "Data Source=.;Initial Catalog=TechTalk;
+Integrated Security=SSPI;TrustServerCertificate=True" 
+Microsoft.EntityFrameworkCore.SqlServer 
+--context AppDbContext --context-dir Data --output-dir Entities]
+
+
+/*
+ In dotnet ef dbcontext scaffold (EF Core CLI),
+ you cannot specify individual tables like you can in PMC.
+ CLI always scaffolds the entire database.
+ If you want only certain tables, you have two options:
+  - Scaffold the whole database and then delete the entity classes you don’t need.
+  - Use PMC (Scaffold-DbContext), which still supports -Tables Table1,Table2
+   for selective tables.
+ This is a limitation in EF Core 8 CLI, different from PMC behavior.
+*/
+
+
+So , for now , u know how do Reverse Engineering using PMC and .NET(dotnet) CLI
+   
+but Note :
+ to make .NET ClI Work u must do these steps :
+ 1- open folder in file explorere of project [right click]
+ 2- open termina [right click]
+ - command -> dotnet --version [give u version of project] [dotnet here is driver]
+ - command -> dotnet ef [tool] if do not work u must donwload it by:
+ - command -> dotnet tool install --global dotnet-ef
+ - command -> dotnet tool update --global dotnet-ef
+ 4- Ensure u have two packages in project folder [EF008.csproj] ,
+    u have [Microsoft.EntityframeworkCore.Tools] and [Microsoft.EnitiyFrameworkCore.SqlServer]
+    do not need Design package like PMC
+    now u can use all commands of .NET CLI as top .... when i use Database first scaffold
+
+
+
+ Why Microsoft.EntityFrameworkCore.Design is needed in scaffolding ??
+
+ The Design package provides design-time tools for scaffolding and migrations.
+ Runtime packages alone cannot generate code (DbContext, Entities, Migrations).
+ Without the Design package, 'dotnet ef' cannot reverse-engineer or scaffold the database.
+ Design-time = generating code; Runtime = running the application.
+
+
+ What is difference between EF Core Model and EF Core ??
+ 
+ EF Core: The framework (ORM) used to interact with the database.
+ EF Core Model: The internal map EF builds from your entities (classes, relationships, configurations).
+ EF Core = engine; EF Core Model = the map that guides the engine.
+
+
+ Note:
+    If Code First → EF doesn’t actually look at the database; it’s the one that creates it.
+    If Scaffold / Database First → EF actually reads the database and generates entities from it.
+}
