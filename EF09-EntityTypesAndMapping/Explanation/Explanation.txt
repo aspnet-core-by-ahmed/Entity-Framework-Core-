@@ -1,0 +1,821 @@
+﻿============================================================================================================================================
+=========================================================> Entity Types & Mapping <=========================================================
+============================================================================================================================================
+
+
+===> Introduction
+In the previous lesson, we learned how to create an EF Core model from an existing database using tools like scaffolding.
+Now, we will go deeper into advanced configuration techniques.
+This will help make sure your EF Core model matches the database perfectly,
+achieving 100% synchronization without relying on automatic tools every time.
+We will focus on manual mapping, relationships, schemas, and keys using Fluent API and Data Annotations.
+This way, you control everything precisely.
+
+ ---------------------------------------------------------------------------------------------------------------------------
+
+===> (1) RestoDb (Use Case)
+Imagine you visit a restaurant and get a receipt from the waiter. 
+Let's look at a sample SQL script for a restaurant database and understand it like reading an invoice.
+I'll sketch a simple example of what the invoice might look like:
+
+                         RESTO                               
+         -------------- Invoice ------------- 
+                                                         
+ Date: 2022-01-02 12:30 |
+ Customer: customer1@example.com |
+                                                         
+ --------------------------------------------------------
+ Item          Price     Qty      Amount 
+ --------------------------------------------------------
+ Name_of_food  $41.55     5       $207.75 
+ Name_of_food  $41.55     4       $166.20 
+ Name_of_food  $41.55     3       $124.65 
+ --------------------------------------------------------
+                                         TOTAL: $498.60 
+                       Thank you! 
+ --------------------------------------------------------
+
+
+From this, we can see the database needs tables like:
+- Sales.Orders: Stores order info with columns like Id (PK), OrderDate, CustomerEmail.
+- Sales.OrderDetails: Stores order items with columns like Id (PK), OrderId (foreign key to Orders), ProductId (foreign key to Products), UnitPrice, Quantity.
+- Inventory.Products: Stores product info with columns like Id (PK), Name, UnitPrice, Description.
+
+
+
+=> Important points:
+- The UnitPrice in Sales.OrderDetails is copied from Inventory.Products at the time of the order. 
+This keeps historical data accurate.
+
+- The UnitPrice in Inventory.Products is the current price. It can change over time.
+- Example: On 10/10/2020, you order pizza at $100. So, UnitPrice in OrderDetails = $100, and at that time,
+UnitPrice in Products = $100.
+
+- Later, on 1/12/2024, the pizza price rises to $150. A new order has UnitPrice in OrderDetails = $150,
+and Products updates to $150.
+
+- If you query old orders, OrderDetails shows the original $100, even if Products now says $150.
+This separation ensures data integrity—without it, historical reports would show wrong prices.
+
+
+
+=> Relationships between tables:
+
+- Inventory.Products (1) ----> Sales.OrderDetails (N): One product can be in many order details 
+(but actually, this is a many-to-many in concept if considering multiple orders,
+but here it's one-to-many from Product to OrderDetails because each OrderDetail links to one Product).
+
+  - Clarification on your note: You said "I see that relationship here can be many to many". Actually,
+  it's one-to-many: One Product can appear in many OrderDetails (across different orders),
+  but each OrderDetail refers to only one Product.
+  If you need true many-to-many (e.g., products in categories), you'd need a junction table, 
+  but here it's straightforward one-to-many.
+
+
+- Sales.Orders (1) ----> Sales.OrderDetails (N): One order can have many details, each detail belongs to one order.
+
+Note: We use two schemas—[Inventory] for products, [Sales] for orders and details. This organizes the database logically.
+
+
+---------------------------------------------------------------------------------------------------------------------------
+ ===> (2) Example Database Setup
+To work with this, install these NuGet packages:
+- Microsoft.EntityFrameworkCore.Tools
+- Microsoft.EntityFrameworkCore.SqlServer
+- Microsoft.Extensions.Configuration
+- Microsoft.Extensions.Configuration.Json
+
+Create an 'appsettings.json' file with your connection string, like:
+{
+  "constr": "Server=your_server;Database=Resto;IntegreatedServerCertificate=SSPI;TrustServerCertificate=True;"
+}
+
+and make [appsettings.json] be [Embedded resource] and [copy always]
+
+In your AppDbContext class (which inherits from DbContext), override OnConfiguring to load the connection:
+
+
+protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+{
+    base.OnConfiguring(optionsBuilder);
+    IConfigurationRoot config = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build();
+    string? constr = config.GetSection("constr").Value;
+    optionsBuilder.UseSqlServer(constr);
+}
+
+
+
+You have a Scripts folder with 'RestoScript.sql'
+—run this SQL script to create the database, tables, functions, etc. It sets up everything we need.
+
+
+ ---------------------------------------------------------------------------------------------------------------------------
+ ===> (3) Configure DB, Tables, Schemas, and Entities
+Now, let's manually create entity classes in a namespace like EF009.Entities.
+These classes match the database columns' names and data types exactly.
+
+namespace EF009.Entities
+{
+    public class Product
+    {
+        public int Id { get; set; }
+        public string? Name { get; set; }
+        public decimal UnitPrice { get; set; }
+        public string? Description { get; set; }
+        // Note: We DON'T need List<OrderDetails> here—explained in relationships section below.
+    }
+
+    public class Order
+    {
+        public int Id { get; set; }
+        public string? CustomerEmail { get; set; }
+        public DateTime OrderDate { get; set; }
+        public List<OrderDetails>? OrderDetails { get; set; } // Navigation for one-to-many
+    }
+
+    public class OrderDetails
+    {
+        public int Id { get; set; }
+        public int OrderId { get; set; }
+        public int ProductId { get; set; }
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; } // Added this—matches your use case
+        public Order? Order { get; set; } // Navigation back to Order
+        public Product? Product { get; set; } // Navigation to Product
+    }
+}
+
+Setting up relationships (navigation properties):
+- This is crucial
+
+— don't just add lists or references blindly based on "one-to-many". 
+Understand the context and what you need for querying.
+
+- For Orders and OrderDetails (strong one-to-many relationship):
+  - In Order: Add List<OrderDetails> because you often query an Order and want all its details (e.g., "Get order with items").
+  - In OrderDetails: Add Order? reference because you might need to **navigate back** (e.g., "From a detail, get the full order").
+  - This is bidirectional: EF Core uses it for efficient joins and loading related data.
+
+- For Products and OrderDetails (weaker one-to-many):
+  - In Product: Do NOT add List<OrderDetails> unless you frequently need "All orders for this product" (it could bloat queries).
+  - In OrderDetails: Add Product? reference because you often need product info from a detail (e.g., name, description).
+  - This is unidirectional: From OrderDetails to Product, but not the other way. It keeps things lightweight.
+
+- Why this way? Navigation properties are for convenience in code 
+(e.g., order.OrderDetails.Sum(d => d.UnitPrice * d.Quantity) for total). 
+Base them on your app's needs, not just database constraints. 
+EF Core infers foreign keys from property names (e.g., OrderId implies link to Order.Id), but you can configure explicitly.
+
+- More explanation: If you always added lists for every one-to-many, your models would have unnecessary collections,
+leading to performance issues (e.g., eager loading too much data).
+Think: "What do I query most?" For sales apps,
+orders-to-details is core, products-to-details is secondary (historical reporting).
+
+In AppDbContext, add DbSets:
+
+public DbSet<Product> Products { get; set; }
+public DbSet<Order> Orders { get; set; }
+public DbSet<OrderDetails> OrderDetails { get; set; }
+
+
+Use Fluent API for configuration in OnModelCreating:
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<Product>().ToTable("Products", schema: "Inventory").HasKey(x => x.Id);
+    modelBuilder.Entity<Order>().ToTable("Orders", schema: "Sales").HasKey(x => x.Id);
+    modelBuilder.Entity<OrderDetails>().ToTable("OrderDetails", schema: "Sales").HasKey(x => x.Id);
+    base.OnModelCreating(modelBuilder);
+}
+
+
+- This maps entities to tables and schemas explicitly.
+- Alternative: Set default schema for all:
+
+modelBuilder.HasDefaultSchema("Sales");
+
+  - Then override per entity if needed (e.g., Product to "Inventory").
+
+Note 1: Composite Keys
+- In OrderDetails, having just Id as PK isn't ideal—logically,
+it should be composite (e.g., OrderId + ProductId) to prevent duplicates in one order.
+- Task: Update database (ALTER TABLE) and model:
+
+modelBuilder.Entity<OrderDetails>().HasKey(x => new { x.OrderId, x.ProductId }); // Composite key
+
+- Remove the Id column if not needed, or keep it as auto-increment but use composite for uniqueness.
+
+Note 2: Data Annotations Alternative
+- Instead of Fluent API, use attributes on entities:
+
+  - For primary key:
+[Key] // Or [PrimaryKey("Id")]
+public int Id { get; set; }
+
+  - For table and schema:
+[Table("Orders", Schema = "Sales")]
+public class Order { ... }
+
+
+- Fluent API is more flexible for complex setups.
+
+
+- Note :
+Why Use Nullable Navigation (Order?)
+
+Navigation properties like Order? are for code querying, not DB storage—the real link is via non-nullable OrderId.
+Nullable allows flexibility: Objects start null, loaded on demand (e.g., via .Include()); avoids compiler warnings with NRT.
+DB enforcement: Use Fluent API .IsRequired() to make relationship mandatory, preventing null FK inserts.
+
+Alternative: Non-Nullable with Null-Forgiving (= null!)
+
+Declare as public Order Order { get; set; } = null!;—treats it as always non-null after init, suppresses warnings.
+Best for strict code: Set navigation explicitly or load it; runtime errors if forgotten.
+Pros: Cleaner access (no ?.); Cons: Less flexible, risk of exceptions if not loaded.
+
+and this applying on [Product?]
+
+---------------------------------------------------------------------------------------------------------------------------
+
+Answering Your Question: How is this done without using migrations or scaffolding?
+- This approach is manual mapping (code-first style, but to an existing DB).
+You don't use "dotnet ef dbcontext scaffold" (which auto-generates entities from DB)
+or "dotnet ef migrations add" (which generates DB changes from code).
+
+- Instead: You inspect the DB schema (via SQL script or tools like SSMS), 
+then hand-code entities, DbSets, and configurations to match it exactly.
+
+- Synchronization: EF Core doesn't alter the DB here—it's for querying/inserting data that fits the existing structure.
+To "sync" (ensure model matches DB), test by running queries; if mismatches (e.g., column names), adjust code.
+No DB changes happen unless you explicitly use migrations later.
+
+- Why? Full control, learning, or when scaffolding generates messy code.
+Drawback: Tedious for large DBs, but great for understanding.
+If DB changes, update code manually.
+For reverse (code to DB), you'd use migrations, but here we're mapping to existing DB without changing it.
+   
+   
+   
+
+
+
+
+
+
+
+
+
+
+   
+---------------------------------------------------------------------------------------------------------------------------
+ 
+ 
+
+
+
+
+
+
+
+
+
+
+
+   
+===> (4) Exclude Entities from EF-Core Model
+Sometimes, you want to add properties or classes to your entities that are only for in-memory use 
+(like temporary data or calculations). These shouldn't map to the database.
+If EF Core thinks they are entities, it will throw errors (e.g., missing primary key or DbSet).
+Here's how to exclude them properly.
+
+### Creating an In-Memory Class (SnapShot)
+- We want to track metadata for each entity loaded from the DB, like when it was loaded and a version stamp.
+- Create a simple class for this:
+
+[NotMapped]  // We'll explain this soon
+public class SnapShot
+{
+    public DateTime LoadedAt => DateTime.UtcNow;  // Auto-sets to current time
+    public string Version => Guid.NewGuid().ToString().Substring(0, 8);  // Short unique ID (first 8 chars)
+}
+
+
+- Add it as a property in the Product entity:
+
+public class Product
+{
+    // ... other properties
+    public SnapShot SnapShot { get; set; } = new();  // Initialize to avoid null errors
+}
+
+
+#### The Problem: EF Core Treats It as an Entity
+- Without fixes, when you run queries (e.g., context.Products.ToList()), you'll get exceptions like:
+  - "The entity type 'SnapShot' requires a primary key to be defined."
+  - "No DbSet<SnapShot> found in the context."
+- Why? EF Core scans your model and assumes SnapShot is a database entity because it's referenced in Product
+(a tracked entity). It expects a table, PK, and DbSet for it.
+
+
+
+#### Solution: Exclude with [NotMapped]
+- Add the [NotMapped] Data Annotation to SnapShot:
+
+[NotMapped]
+public class SnapShot { ... }
+
+- This tells EF Core: "Ignore this class—it's not part of the DB model. Treat it only in memory."
+- Now, queries work without errors. SnapShot exists in C# objects but won't create DB tables or columns.
+
+#### Alternative: Exclude with Fluent API
+- Instead of [NotMapped], use OnModelCreating:
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Ignore<SnapShot>();  // Excludes the type entirely
+    // ... other configs
+}
+
+- Same effect: EF Core skips it during model building.
+
+#### Use Case: Why Do This?
+- Benefits: Add runtime-only data without polluting the DB. E.g., logging, auditing, or computed values that don't need storage.
+- Example in Program.cs (console app to demo):
+
+namespace EF009
+{
+    internal class Program
+    {
+        static void Main(string[] args)
+        {
+            var context = new AppDbContext();
+            foreach (var product in context.Products)
+            {
+                Console.WriteLine(
+                    $"{product.Name}\n" +
+                    $"........ Loaded at {product.SnapShot.LoadedAt.ToString("yyyy-MM-dd hh:mm")}\n" +
+                    $" Version: {product.SnapShot.Version}"
+                );
+            }
+        }
+    }
+}
+
+- Output: Shows product name with load time and version—generated fresh each run, not from DB.
+
+
+#### Handling NullReferenceException
+
+- If you don't initialize SnapShot, accessing it (e.g., product.SnapShot.LoadedAt)
+throws "Object reference not set to an instance."
+
+- Why? Properties default to null unless set.
+- Fixes:
+  1. Inline initialization:
+
+     public SnapShot SnapShot { get; set; } = new();  // Creates instance automatically
+
+
+
+  2. Private constructor (ensures it's set when object is created):
+
+     private Product()  // EF Core can still use this for materialization
+     {
+         this.SnapShot = new();
+     }
+
+- Avoid: Just `public SnapShot SnapShot { get; set; };` without init—leads to nulls.
+
+#### Key Notes
+- Use [NotMapped] for properties too (e.g., computed props like FullName = First + Last).
+- This keeps your model clean: DB-focused entities + in-memory helpers.
+- If SnapShot had its own DB needs, you'd add DbSet and PK instead of excluding.
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------------------------------------------------------------------
+
+
+  
+  
+  
+  
+  
+ 
+  
+  
+  
+  
+  ===> (5) Including Entities in EF Core Model
+EF Core has three main ways to include (or recognize) entities in your model.
+This controls how you can query or work with them in code.
+We'll go through each way with examples, and explain when to use them.
+Note: "Including" here means making the entity part of EF Core's metadata (model), not necessarily creating a DB table.
+
+#### Way 1: Using DbSet<> (The Most Common and Easy Way)
+- This is the standard way: Add a DbSet property in your DbContext for the entity.
+- Example: If you have DbSet<OrderDetails>, you can query it directly.
+
+var itemsInOrder1 = context.OrderDetails.Where(x => x.OrderId == 1);
+Console.WriteLine($"Items Count In Order 1: {itemsInOrder1.Count()}");
+
+
+- Benefit: Simple access like context.EntityName.Query().
+EF Core knows it's a full entity with a DB table.
+
+#### What Happens If You Remove DbSet<OrderDetails>?
+- The direct query above would fail (error: No DbSet for OrderDetails).
+- But you can still access it indirectly—leading to Way 2.
+
+
+
+#### Way 2: Including Entities via Navigation Properties from Other Entities
+- If an entity is linked via relationships (e.g., Order has List<OrderDetails>),
+you can reach it through the parent entity.
+- Example (without DbSet<OrderDetails>):
+
+var order1Details = context.Orders.FirstOrDefault(x => x.Id == 1)!.OrderDetails;
+Console.WriteLine($"Items Count In Order 1: {order1Details!.Count()}");
+
+- Problem: This might output 0 (empty list). Why?
+  - EF Core uses "lazy loading" by default: Related data (like OrderDetails)
+  isn't loaded automatically to save performance.
+- Fix: Use .Include() to eager-load the related entities.
+
+var order1Details = context.Orders
+    .Include(x => x.OrderDetails)  // Loads details with the order
+    .FirstOrDefault(x => x.Id == 1)!.OrderDetails;
+Console.WriteLine($"Items Count In Order 1: {order1Details!.Count()}");
+
+- Benefit: Access "child" entities without a direct DbSet, as long as they're navigated from a parent.
+Great for related data.
+
+
+
+
+#### Way 3: Including Entities via OnModelCreating (Fluent API)
+- For entities that aren't in DbSets or navigations, you can explicitly add them to the model in OnModelCreating.
+- Example: Create an AuditEntry class for tracking actions (e.g., audits in background).
+
+public class AuditEntry
+{
+    public int Id { get; set; }
+    public string UserName { get; set; } = null!;  // User who did the action
+    public string Action { get; set; } = null!;    // What action (e.g., "Read Order")
+}
+
+- This has:
+  - No DbSet<AuditEntry> in DbContext (not Way 1).
+  - No navigation properties in other entities (not Way 2).
+- Include it in the model (but not in the DB—it's memory-only):
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<AuditEntry>().HasKey(x => x.Id);  // Adds to EF model
+    // ... other configs
+}
+
+- Now, AuditEntry is part of the EF Core model (metadata), but no DB table is created or expected.
+
+#### How to Use AuditEntry in Code?
+- You can't query it directly like context.AuditEntries (no DbSet).
+- Instead, use context.Set<TEntity>() for generic access:
+  1. Create an instance:
+
+var auditEntry = new AuditEntry
+{
+    UserName = "Issam",
+    Action = "Read Order Count"
+};
+
+  2. Add it:
+
+context.Set<AuditEntry>().Add(auditEntry);
+context.SaveChanges();  // This will ERROR!
+
+- Why error on SaveChanges()?
+  - AuditEntry is in the model but not mapped to a DB table (incomplete entity). It's for memory-only use, not persistence.
+
+- Benefit/Use Case:
+  - For "owned" or shared types (common CLR types) that need EF configurations (e.g., keys, indexes) but aren't full DB entities.
+  - Examples: Complex value objects, audit logs in memory, or types shared with other ORMs (Dapper, ADO.NET, NHibernate).
+  - Customize: You can add more Fluent API configs (e.g., .ToTable() if you later want a DB table).
+  - Important for advanced scenarios like entity splitting or owned entities—explained more later.
+  - In short: Treat it as a configurable .NET type in EF's model, without forcing a DB table. Useful for hybrid apps or temporary data.
+
+#### Key Notes
+- Way 1: Direct, for main entities.
+- Way 2: Indirect, for related data (use Include() to load).
+- Way 3: Explicit, for special/non-DB entities.
+- You can mix ways and even customize for other tools (e.g., map AuditEntry to a view or use in raw SQL with Dapper).
+- Question: Can I use this with Dapper/ADO.NET/NHibernate? Yes—since it's a plain CLR class with EF configs, you can query it manually via SQL in the same app.
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------------------------------------------------------------------
+
+   
+   
+   
+   
+  
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+===> (6) Mapping Views
+Views in a database are like virtual tables based on queries (e.g., joins across real tables).
+In EF Core, you can map a view to an entity so you can query it like a regular table, 
+but without creating a primary key (since views are read-only and don't have PKs by default).
+This keeps your model in sync with the DB view. Here's how to do it step by step.
+
+#### 1. Create the Entity Class
+- Make a class that matches the view's columns exactly (names and types).
+- Example: For a DB view called "OrderWithDetailsView" that combines order and detail info.
+
+public class OrderWithDetailsView
+{
+    public int OrderId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public string CustomerEmail { get; set; } = null!;
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = null!;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+}
+
+- No navigation properties or extra logic needed—it's just a flat structure.
+
+#### 2. Configure in AppDbContext
+- Add a DbSet for querying convenience (optional, but recommended).
+DbSet is an optional shortcut for easy querying, like `context.OrderWithDetails.Where(...)`.  
+It makes the code cleaner and more readable than using `context.Set<OrderWithDetailsView>()`.
+DbSet is optional because EF Core already knows the entity (from Fluent API in OnModelCreating)
+and can query it using `context.Set<T>()`.
+Adding DbSet is just a convenience to make your code shorter and cleaner:
+- With DbSet: `context.OrderWithDetails.Where(...)`  
+- Without: `context.Set<OrderWithDetailsView>().Where(...)`
+So it's not required for the mapping to work, but it's recommended for readability and discoverability.
+public DbSet<OrderWithDetailsView> OrderWithDetails { get; set; }  // Note: Plural or descriptive name
+
+- In OnModelCreating, map it to the view and mark no key:
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<OrderWithDetailsView>()
+        .ToView("OrderWithDetailsView")  // Maps to the DB view name
+        .HasNoKey();  // Views don't have PKs; this prevents EF from assuming one
+    // ... other configs
+}
+
+- Why HasNoKey()? If you add DbSet without this, EF treats it like a table entity and expects a PK (throws errors). 
+Views are query-only, so no key is needed.
+
+
+#### Usage Example
+- Query it like any entity:
+
+
+var results = context.OrderWithDetails.Where(x => x.OrderId == 1).ToList();
+foreach (var item in results)
+{
+    Console.WriteLine($"{item.OrderId}: {item.ProductName} x {item.Quantity} at {item.UnitPrice}");
+}
+
+
+- Benefit: Simplifies complex joins—EF handles the view query for you.
+
+#### Key Notes
+- Views are read-only in EF Core by default (no inserts/updates).
+- If the view changes in DB, update the entity class manually to stay in sync.
+- No migrations needed if DB-first—the view exists already.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ---------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+===> (7) Mapping Table-Valued Functions (TVFs)
+Table-Valued Functions (TVFs) in SQL are user-defined functions that return a table of results (like a view, but can take parameters and be more complex). In the Resto DB, there's a TVF called [dbo.GetOrderBill] that takes an orderId and returns bill details: OrderId, OrderDate, ProductName, UnitPrice, Quantity, SubTotal (from joins across tables).
+
+#### Difference Between View and TVF
+- Both are DB objects returning table-like data.
+- **View**:
+  - Virtual table from a fixed SQL query (e.g., joins).
+  - Flat structure (no nested tables).
+  - No parameters—always the same result set.
+  - Faster (pre-compiled query).
+- **TVF**:
+  - User-defined function returning a table.
+  - Can have complex logic, nested queries, or even nested tables.
+  - Accepts parameters (e.g., filter by orderId).
+  - Slower than views (executes like a function).
+
+#### How to Map a TVF in EF Core
+1. **Create the Entity Class**
+   - Match the TVF's output columns exactly.
+
+
+public class OrderBill
+{
+    public int OrderId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public string ProductName { get; set; } = null!;
+    public decimal UnitPrice { get; set; }
+    public int Quantity { get; set; }
+    public decimal SubTotal { get; set; }
+
+    public override string ToString()
+    {
+        return $"{OrderId} at {OrderDate} and Name: {ProductName}\nPrice: {UnitPrice} - \tQuantity: {Quantity}\n......{SubTotal:C}";
+    }
+}
+
+
+2. **Add DbSet (Optional)**
+   - For easier access:
+
+public DbSet<OrderBill> OrderGivenBill { get; set; }
+
+
+3. **Configure in OnModelCreating**
+   - Map to the TVF and no key (like views):
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<OrderBill>()
+        .ToFunction("GetOrderBill")  // Maps to the TVF name
+        .HasNoKey();  // No PK needed
+    // ... other configs
+}
+
+
+#### Usage in Program.cs
+- Query the TVF with parameters using raw SQL (since TVFs need params):
+
+var order1BillDetails = new AppDbContext()
+    .Set<OrderBill>()
+    .FromSqlInterpolated($"SELECT * FROM GetOrderBill({1})")  // Param: orderId=1
+    .ToList();
+
+foreach (var item in order1BillDetails)
+{
+    Console.WriteLine(item);
+}
+
+- **Why use Set<OrderBill>()?**
+  - context.Set<TEntity>() is a generic way to get an IQueryable for any entity type in the model,
+  even without a DbSet property.
+  - It's like Way 3 from section (5): 
+  Includes the entity on-the-fly without needing a dedicated DbSet.
+  - Here, it's used because TVFs aren't standard tables—Set lets you query them dynamically.
+  - Explanation of the line: `context.Set<OrderBill>()` creates a queryable set for OrderBill. `.FromSqlInterpolated()` runs raw SQL on it (with safe param interpolation to prevent SQL injection). `ToList()` executes and materializes results.
+
+#### Important Note: Does It Work Without DbSet?
+- Yes! If you remove `public DbSet<OrderBill> OrderGivenBill { get; set; }`, the code still runs and gives results.
+- Why? The Fluent API in OnModelCreating includes OrderBill in the model (Way 3). Set<> accesses it without needing DbSet (which is just a shortcut).
+- DbSet is optional for querying—great for ad-hoc or function-mapped entities.
+
+#### Key Notes
+- TVFs are read-only like views.
+- Use FromSqlRaw/Interpolated for params—EF doesn't support direct LINQ on TVFs with params.
+- If DB changes the TVF output, update the entity class.
+- Benefit: Parameterized queries for dynamic reports without complex LINQ joins.
+
+---------------------------------------------------------------------------------------------------------------------------
+
+
+==> Note:
+ ### When is DbSet Mandatory? When is it Optional?
+
+- **Mandatory?** Never! In EF Core (6, 7, 8+),
+DbSet is **never required** for the entity to be part of the model or for querying to work.
+
+- **Optional (but highly recommended) in these cases**:
+  1. You want clean, readable code:  
+     `context.OrderWithDetails.Where(...)` instead of `context.Set<OrderWithDetailsView>().Where(...)`
+  2. Better IntelliSense and discoverability in the DbContext.
+  3. You query the entity frequently (views, TVFs, regular tables).
+
+- **You can always skip it** when:
+  - The entity is rarely used.
+  - You prefer a minimal DbContext (fewer properties).
+  - You're using `context.Set<T>()` anyway (common for views/TVFs).
+
+**Summary**:  
+DbSet is **100% optional** in all cases,
+but **strongly recommended** for any entity you query often because it makes your code shorter, clearer, 
+and easier to maintain.
+
+
+
+
+-----------------------------------------------------------
+
+
+==> 
+Yes, exactly!
+
+### DbSet's Only Real Purpose
+- It makes querying easier and cleaner (just syntax sugar).  
+  Example:  
+  - With DbSet: `context.Products.Where(...)`  
+  - Without: `context.Set<Product>().Where(...)`
+
+- It does **not** add the entity to the EF Core model.  
+  EF Core learns about the entity from the Fluent API in `OnModelCreating` (e.g., `.ToTable()`, `.ToView()`, `.ToFunction()`, etc.), not from DbSet.
+
+### DbSet is 100% optional
+You can do everything without it, and it will work perfectly.
+
+### How you actually map to a table/view/function
+You use Fluent API in `OnModelCreating`:
+
+- Regular table: `.ToTable("TableName")`  
+- View: `.ToView("ViewName")`  
+- Table-Valued Function: `.ToFunction("FunctionName")`
+
+These are the commands that register the entity with the EF model and tell it where to map in the database.
+
+**Summary in one line**:  
+DbSet = optional convenience for cleaner querying.  
+The real mapping (table/view/function) happens with `.ToTable()`, `.ToView()`, or `.ToFunction()`.
+
+
+
+
+
+--------------------------------------------------------
+
+
+Yes, exactly!
+
+When you rely on **EF Core conventions** (the default behavior), **DbSet is required** in most common cases.
+
+### Why DbSet is needed with conventions
+EF Core uses conventions to automatically figure things out:
+- The DbSet name must be plural (e.g., `DbSet<Product> Products` → table = "Products")
+- The table name is derived from the DbSet name (or entity name)
+- Primary key is guessed (Id or EntityId)
+- Relationships are discovered from navigation properties
+
+If you remove the DbSet completely,
+EF Core won’t know the entity exists in the model → it won’t map anything automatically, and you’ll get errors.
+
+### Comparison: Convention vs Explicit Mapping
+
+| Scenario                     | DbSet Required? | Fluent API Required? | Example 
+|------------------------------|-----------------|----------------------|---------
+| **Convention (default)**     | Yes             | No                   | `public DbSet<Product> Products { get; set; }` → table = Products |
+| **Explicit mapping**         | No (optional)   | Yes                  | `modelBuilder.Entity<Product>().ToTable("Products");` → works even without DbSet |
+
+### Bottom line
+- If you use **conventions** (the most common way for regular tables), **you need DbSet**.
+- If you use **explicit mapping** (e.g., for views, TVFs, or custom table names),
+**DbSet is optional** — you can rely on `context.Set<T>()` or Fluent API alone.
+
+In real-world projects, most developers use conventions for main tables, so they always add DbSets.
+For views and functions, they use explicit mapping and often skip DbSet (or add it only for convenience).
