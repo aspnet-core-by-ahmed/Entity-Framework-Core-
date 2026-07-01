@@ -1,0 +1,202 @@
+﻿// =============================================================
+// EF Core - Model Configuration (Full Organized Explanation)
+// This file contains a clean, structured, corrected, and fully
+// organized explanation for all concepts you wrote previously.
+// =============================================================
+
+using EF007.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace EF007.Explaination
+{
+    internal class All
+    {
+        // =============================================================
+        // EF Core Model Overview
+        // Model = [Entities (classes) + DbContext (session with database)]
+        // EF Core acts as an ORM (Object Relational Mapper)
+        // =============================================================
+
+        // EF Core supports 3 development approaches:
+        // 1) Database First  => [DB -> Model]
+        // 2) Model First     => [DB <- Model]
+        // 3) Code First      => [DB <- Model] (using migrations to generate DB)
+
+
+        // =============================================================
+        // Example Application (Twitter Simulation)
+        // =============================================================
+        // Example Tweets:
+        //  User #1 (Jan 11 2022 19:35) => "EF-Core is an open-source ORM"
+        //  User #2 (Jan 11 2022 20:00) => "Yes, and also lightweight"
+        //  User #3 (Jan 12 2022 18:00) => "Yes, and cross-platform"
+
+        // Database will include:
+        //  - Users table
+        //  - Tweets table
+        //  - Comments table
+
+        // Model (in code) will include:
+        //  - User class
+        //  - Tweet class
+        //  - Comment class
+        //  - AppDbContext : DbContext (bridge/session with database)
+        //      inside it: DbSet<Tweet> Tweets
+        //                 DbSet<User> Users
+        //                 DbSet<Comment> Comments
+
+
+        // =============================================================
+        // EF Core Configuration System
+        // Convention Over Configuration
+        // =============================================================
+        // EF works first by Convention (automatic mapping)
+        // If conventions fail → you override using Configuration.
+
+        // Convention Requirements:
+        // 1) DbSet property name should match table name.
+        // 2) Class property names must match column names.
+        // 3) Class name does NOT matter.
+        // 4) Primary Key conventions:
+        //      Id / id / ID
+        //      ClassNameId / classNameId / ClassNameID
+
+        // If a property name doesn’t match a column → EF breaks → You must configure it.
+
+
+        // =============================================================
+        // 1) Data Annotations (Override Convention)
+        // =============================================================
+        // Examples:
+        //  [Table("tblComments")]  → Maps class to table tblComments
+        //  [Column("UserId")]      → Maps property to specific column
+        //
+        // Used ONLY when Convention is broken.
+
+
+        // =============================================================
+        // 2) Fluent API (Override Using OnModelCreating)
+        // =============================================================
+        // More powerful than Data Annotations.
+        // Keeps the Entities clean.
+        // All configuration in one centralized place.
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            // Table Mapping
+            modelBuilder.Entity<User>().ToTable("tblUsers");
+            modelBuilder.Entity<Tweet>().ToTable("tblTweets");
+            modelBuilder.Entity<Comment>().ToTable("tblComments");
+
+            // Column Mapping Example
+            modelBuilder
+                .Entity<User>()
+                .Property(p => p.Id)
+                .HasColumnName("CommentId");
+        }
+
+
+        // =============================================================
+        // 3) Grouping Configuration (Best Practice)
+        // =============================================================
+        // Using IEntityTypeConfiguration<T>
+        // Better separation of concerns, cleaner architecture.
+        // One config class per entity.
+
+
+        // This is the BEST way (Grouping configuration)
+        // Better separation of concerns
+        // Create folder Config inside folder Data
+        // Put UserConfiguration inside it
+        // Make it public
+        // Inherit from IEntityTypeConfiguration<User>
+        // Implement Configure()
+        // Add logic inside
+
+        // note: create config class for each entity
+
+
+
+        public class UserConfiguration : IEntityTypeConfiguration<User>
+        {
+            public void Configure(EntityTypeBuilder<User> builder)
+            {
+                builder.ToTable("tblUsers");
+            }
+        }
+
+        public class TweetConfiguration : IEntityTypeConfiguration<Tweet>
+        {
+            public void Configure(EntityTypeBuilder<Tweet> builder)
+            {
+                builder.ToTable("tblTweets");
+            }
+        }
+
+        public class CommentConfiguration : IEntityTypeConfiguration<Comment>
+        {
+            public void Configure(EntityTypeBuilder<Comment> builder)
+            {
+                builder.ToTable("tblComments");
+            }
+        }
+
+
+        // Apply configurations inside OnModelCreating
+        protected void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            // Individual Calls (Not bad but slow , take space.....)
+            new UserConfiguration().Configure(modelBuilder.Entity<User>());
+            new CommentConfiguration().Configure(modelBuilder.Entity<Comment>());
+            new TweetConfiguration().Configure(modelBuilder.Entity<Tweet>());
+
+            // Grouping through Assembly (Best Way)
+            modelBuilder.ApplyConfigurationsFromAssembly(typeof(UserConfiguration).Assembly);
+        }
+
+
+        // =============================================================
+        // Additional Explanation (as you wrote it)
+        // =============================================================
+
+        // by default EF-Configuration Use Convention
+        // if the last conditions false you will use configuration inside model
+        // by default EF-Configuration Use Convention
+        // "Convention over configuration" paradigm
+        // تقليل عدد التدخلات التي يتعين على المطور عملها في حال اتباع الاتفاقية
+        // دون إلغاء إمكانية التخصيص مما يعطي مرونة في التعامل مع الفريمورك.
+
+        // You will have 2 databases on SQL Server:
+        // 1- FakeTwitterV1  => tables: tblComments, tblTweets, tblUsers
+        // 2- FakeTwitterV2  => same structure but different column names
+
+        // We will use FakeTwitterV1 to explain convention.
+        // create appsettings and put this inside:
+
+        /*
+        {
+           "constr": "Server = . ; Database = FakeTwitterV2 ; Integrated Security = SSPI ; TrustServerCertificate = True;"
+        }
+
+        // see diagram in SQL Server
+        */
+
+        // [Table("tblComments")] example:
+        // If your DbSet is named Comments and the DB table is tblComments,
+        // EF will throw "invalid object name Users".
+        // So you must add [Table("tblComments")] to fix the mapping.
+
+        // Example PK Convention:
+        // If inside class User you rename UserId → Id
+        // This respects PK convention
+        // BUT breaks property-to-column naming.
+        // So you must use:
+        // [Column("UserId")]
+
+        // OnModelCreating is virtual
+        // you can override it to add additional logic.
+
+}
