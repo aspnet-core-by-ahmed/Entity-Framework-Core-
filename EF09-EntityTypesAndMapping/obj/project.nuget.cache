@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "iIKtMxWjCK4=",
+  "dgSpecHash": "qD8TtK2BRrs=",
   "success": true,
-  "projectFilePath": "C:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj",
+  "projectFilePath": "c:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Professor\\.nuget\\packages\\azure.core\\1.47.1\\azure.core.1.47.1.nupkg.sha512",
     "C:\\Users\\Professor\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",

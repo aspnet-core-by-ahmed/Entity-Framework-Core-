@@ -1,0 +1,444 @@
+﻿### Introduction to Database Migrations in Entity Framework Core
+
+Hello, this is Engineer Essam, and welcome to episode 10 of our series. 
+Today, we're diving into a unique topic: database migrations.
+
+Updates and changes have become a daily routine in all applications.
+Whether you're working for a company or on your own project,
+you'll often need to make updates that affect how data is stored.
+You need a way to modify the database schema without stopping everything,
+and it should be smooth and effortless—like a knife through butter.
+
+That's where migrations come in. They let you edit the schema right from inside your application code,
+without touching the database directly. Migrations allow you to version your database changes, 
+moving from one version to another under full control, without any chaos فوضى. 
+You can rollback changes or re-apply them anytime. 
+Overall, it's a reliable, practical way to handle schema updates, 
+ensuring data integrity and keeping your development team productive.
+
+To understand this well, let's start from the basics and compare the old way with the new way using migrations.
+
+### The Old Way: Manual Database Creation and Scripts
+
+In the past, before starting an application, we'd first create the database manually.
+Let's use an example: Imagine we're building an academy system where teachers give courses.
+
+read from here explination of this database [https://github.com/metigator/EF-010]
+u must rebuild this database after course database
+
+
+1. **Creating the Database:**
+   - We start by running a script to create an empty database called "Metigator Academy"
+   for storing training data.
+
+2. **Adding Tables:**
+   - **Courses Table:** This stores course details like ID, name, and price. We insert sample data, e.g., 15 courses with IDs, names, and prices.
+   - **Instructors Table:** Stores teacher info with ID and name. Sample data includes teacher IDs and names.
+   - **Sections Table:** This is key. A course can be offered multiple times by different teachers at different times. For example:
+     - Math taught by Ahmed Abdullah, 3 times a week (Sun, Tue, Thu) from 10:00 to 12:00.
+     - Another Math section by a different teacher, twice a week.
+     - This table has relationships: CourseID (foreign key to Courses) and InstructorID (foreign key to Instructors).
+     - We add indexes for faster queries, e.g., on CourseID and InstructorID.
+     - Sample data: 11 sections linked to courses and instructors.
+
+3. **Schedules Table:** Defines how often sections run (e.g., bi-weekly, daily, weekend). Includes ID and a schedule name, plus days of the week (as booleans for each day).
+   - Sample data matches the sections' frequencies.
+
+4. **SectionSchedules Table:** Links sections to schedules and adds start/end times. Ensures no overlaps (though validation might be handled in the app).
+   - Foreign key to ScheduleID.
+
+5. **Students Table:** Stores student IDs and names.
+   - Sample data: Several students.
+
+6. **Enrollments Table:** Links students to sections (many-to-many relationship). Foreign keys to StudentID and SectionID.
+   - Sample data: Shows which students are enrolled in which sections.
+
+In the old way, you'd copy and run these SQL scripts one by one in a tool like SQL Server Management Studio. 
+This creates the database, tables, and inserts data.
+But if you need changes later, you'd manually alter tables, which risks errors and downtime.
+
+We explained database normalization in a previous series—go back if needed for details on why we structure tables this way to avoid redundancy and improve efficiency.
+
+if u want to start with database use reverse engineering [scaffold] , see the last lesson
+
+
+### What Happens in the Old Way After Creating the Database and Tables Manually?
+
+In the **old manual way** (also called **Database-First** approach),
+after you finish creating the database, tables, relationships, indexes, and inserting initial data using raw SQL scripts
+(as we described in the previous section), you still need to connect your .NET application (C# code) to that existing database.
+
+Here are the two most common ways developers used to do this **before migrations became popular**:
+
+#### 1. **Using Entity Framework's "Scaffold-DbContext" (Recommended in Database-First)**
+Yes — this is exactly what you are asking about!
+
+This command **generates C# entity classes and DbContext** automatically from your existing database.
+
+**How to do it (step by step):**
+
+# In Package Manager Console (Visual Studio) or in terminal:
+Scaffold-DbContext "Server=.;Database=Academy;Trusted_Connection=True;" 
+                   Microsoft.EntityFrameworkCore.SqlServer 
+                   -OutputDir Models 
+                   -Context AcademyDbContext 
+                   -DataAnnotations 
+                   -Force
+
+What this does:
+- `-OutputDir Models`: Puts all generated classes in a folder called "Models".
+- `-Context AcademyDbContext`: Names your DbContext class.
+- `-DataAnnotations`: Adds [Key], [Required], [MaxLength] attributes to the properties.
+- `-Force`: Overwrites existing files if you run it again.
+
+Result:
+- You get ready-to-use C# classes like `Course.cs`, `Instructor.cs`, `Section.cs`, etc.
+- You get a fully configured `AcademyDbContext` with `DbSet<Course> Courses { get; set; }` and all relationships mapped.
+- You can now query and save data using LINQ just like in Code-First.
+
+**Important notes:**
+- Every time you change the database manually (add a column, change a type, etc.), you must run `Scaffold-DbContext` again (with `-Force`) to update the classes. This can overwrite your custom changes, so many developers would create partial classes or use other tricks to avoid losing code.
+- This is why migrations became so popular — they avoid this manual regeneration step.
+
+#### 2. **The Even Older Way (Before Scaffold): Reverse Engineering Manually**
+In very old projects (EF 4–5 or earlier), developers would:
+- Create the EDMX file (Entity Data Model) in Visual Studio.
+- Use the "Update Model from Database" wizard.
+- This would generate the same entity classes and context, but in a visual designer (EDMX file).
+
+This method is almost completely abandoned today — very few people still use EDMX.
+
+#### 3. **The Modern Recommendation (What We Use Today)**
+Even if you start with an existing database, the best practice now is to **switch to Code-First + Migrations** as soon as possible:
+- Run `Scaffold-DbContext` once to generate the initial model.
+- Then move to Code-First: keep the generated classes, configure relationships with Fluent API, and start using migrations for all future changes.
+- This way you never have to regenerate everything manually again.
+
+### Summary: Old Way vs. Modern Way
+
+| Step                          | Old Way (Database-First)                          | Modern Way (Code-First + Migrations)              |
+|-------------------------------|---------------------------------------------------|---------------------------------------------------|
+| Create database & tables      | Manual SQL scripts                                | EF Core creates them automatically from code      |
+| Generate C# classes           | `Scaffold-DbContext` (or EDMX wizard)             | You write the classes yourself                    |
+| Make changes later            | Manual ALTER TABLE + re-scaffold (risky)          | Write new migration → `Update-Database` (safe)    |
+| Version control               | Hard to track (SQL scripts)                       | All changes are C# code → Git-friendly            |
+| Rollback changes              | Very difficult                                    | Easy with `Update-Database PreviousMigration`     |
+
+So yes — in the old way, after creating the database and tables manually, you would usually use **`Scaffold-DbContext`** to generate the C# model and DbContext from the existing database.
+
+But once you learn migrations (as we are doing in this series), you will almost never need to go back to the old manual way again — everything becomes much cleaner, safer, and more professional.
+
+If you have any more questions about scaffold, migrations, or how to migrate an existing database to Code-First, just ask!
+
+
+
+
+### The New Way: Code-First Migrations with Entity Framework Core
+
+Now, let's shift to the modern approach: Code-First with migrations. 
+Here, your C# code defines the database, and migrations handle changes automatically.
+
+#### Step 1: Setting Up the Project
+- Create a new solution: "EF".
+- Add a project: "EF010".
+
+- Add "appsettings.json" for connection string:
+
+  {
+  "constr": "Server=.;Database=MetigatorAcademyCFM;Integrated Security=SSPI;TrustServerCertificate=True;"
+  }
+
+  and make appsettings.json be Embedded source with metadeta of build and always copieed
+
+
+- Install NuGet packages:
+  - Microsoft.EntityFrameworkCore.SqlServer 
+  - Microsoft.EntityFrameworkCore.Tools => [MUST TO USE MIGRATIONS]
+  - Microsoft.Extensions.Configuration
+  - Microsoft.Extensions.Configuration.Json
+- In project properties, include "appsettings.json" as content to copy.
+
+- Create "Data" folder, add "AppDbContext.cs" inside it:
+
+    public class AppDbContext : DbContext
+    {
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            base.OnConfiguring(optionsBuilder);
+            var config = new ConfigurationBuilder().AddJsonFile("appsettins.json").Build();
+            var connectionString = config.GetSection("constr").Value;
+            optionsBuilder.UseSqlServer(connectionString);
+        }
+    }
+
+This sets up the basics. No database exists yet—the code will create it.
+
+
+
+Note:
+Now when I look at the database we saw earlier,
+I can see that it represented the entire structure with all its parts already created.
+But in Code-First Migrations, the process is completely different — it is incremental.
+
+This means I will not create the whole database in a single migration.
+No, no — I will build it step by step, through multiple versions.
+Each version represents a change, and I can easily roll back to any previous version whenever needed.
+
+After every modification in the code, I will create a new migration… and so on.
+
+
+#### Step 2: Defining Entities (Models)
+Start small. Assume we begin with just [Courses] and [Instructors].
+
+- Create "Entities" folder.
+
+- Add "Course.cs":
+
+  public class Course
+  {
+      public int Id { get; set; }
+      public string CourseName { get; set; }
+      public decimal Price { get; set; }
+  }
+
+- Add "Instructor.cs":
+
+  public class Instructor
+  {
+      public int Id { get; set; }
+      public string Name { get; set; }
+  }
+
+
+These classes represent tables. In Code-First, EF Core maps them to database tables.
+
+#### Step 3: Configuring Entities [Configuration]
+we must do configuration there is no Convention like database first
+EF needs details on how to map these to the DB. Use Grouping Configuration for best practice.
+
+- Create "Config" folder in "Data".
+
+- Add "CourseConfiguration.cs":
+
+    public class CourseConfiguration : IEntityTypeConfiguration<Course>
+    {
+        // EF Core will call this method when he want to create configuration to Entity[Course]
+        public void Configure(EntityTypeBuilder<Course> builder)
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).ValueGeneratedNever();
+
+            // builder.Property(x => x.CourseName).HasMaxLength(255); // nvarchar(255)
+
+            // to specify [VarChar] datatype
+            builder.Property(x => x.CourseName)
+                .HasColumnType("VARCHAR")
+                .HasMaxLength(255);
+
+            builder.Property(x => x.Price)
+                .HasPrecision(15, 2);
+
+            builder.ToTable("Courses");
+
+            // to add data , sometimes u want to add data in table , this is the way
+            builder.HasData(LoadCourses());
+        }
+
+        private static List<Course> LoadCourses()
+        {
+            return new List<Course>
+            {
+                // i get this data from database explination on github and i give  u link 
+                new Course { Id = 1, CourseName = "Mathmatics", Price = 1000m},
+                new Course { Id = 2, CourseName = "Physics", Price = 2000m},
+                new Course { Id = 3, CourseName = "Chemistry", Price = 1500m},
+                new Course { Id = 4, CourseName = "Biology", Price = 1200m},
+                new Course { Id = 5, CourseName = "CS-50", Price = 3000m},
+            };
+        }
+
+    }
+}
+
+- Similarly for "InstructorConfiguration.cs" (just ID and Name).
+
+   public class InstructorConfiguration : IEntityTypeConfiguration<Instructor>
+    {
+        public void Configure(EntityTypeBuilder<Instructor> builder)
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).ValueGeneratedNever();
+
+            builder.Property(x => x.Name)
+                .HasColumnType("VARCHAR") // to make it not [nvarcahr] be [varchar]
+                .HasMaxLength(255);
+
+            builder.ToTable("Instructors");
+
+            builder.HasData(LoadInstructors());
+        }
+
+        private static List<Instructor> LoadInstructors()
+        {
+            return new List<Instructor>
+            {
+               new Instructor { Id = 1, Name = "Ahmed Abdullah"},
+               new Instructor { Id = 2, Name = "Yasmeen Moahmed"},
+               new Instructor { Id = 3, Name = "Khalid Hassan"},
+               new Instructor { Id = 4, Name = "Nadia Ali"},
+               new Instructor { Id = 5, Name = "Ahmed Abdullah"}
+            };
+        }
+    }
+
+
+
+
+
+This defines primary keys, column types, required fields, and initial data (seeding).
+
+
+
+#### Step 4: Registering in DbContext
+In "AppDbContext.cs":
+
+
+public DbSet<Course> Courses { get; set; }
+public DbSet<Instructor> Instructors { get; set; }
+
+// Now EF know that there is two entities included in EF Core Model [Course and Instructruoes]
+// but do have any information about configuration , there no relationship with configuration
+// there are two ways to make it know configurations of entities and each way is in model creating 
+
+
+// there is a very good note explain very important topic at bottom 
+
+
+ protected override void OnModelCreating(ModelBuilder modelBuilder)
+  {
+      base.OnModelCreating(modelBuilder);
+
+      // way 1 
+      modelBuilder.ApplyConfiguration(new CourseConfiguration());
+      // ---- add statements for each configuration
+
+      // way 2
+      modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+      // AppDbContext in the same assemby with them so will work 
+  }
+
+
+This auto-discovers configurations from the assembly—scalable for many entities.
+
+
+
+#### Step 5: Creating and Applying Migrations
+- Fields like strings default to nullable if not specified. Use `.IsRequired()` to make them non-nullable.
+- i want migration to get snapshot from ef core model [entities and dbcontext] , now database is not exist
+si , migration will be get snapshot from ef model and configuration and building process and ef core take snapshot 
+and give it name and this name is special for this update 
+
+- Run in Package Manager Console:
+  - `Add-Migration "Initial"` (creates migration files: timestamped class with Up() and Down() methods).
+    - Up(): Creates tables based on configs (e.g., CREATE TABLE Courses...). , to add migration
+    - Down(): Drops tables for rollback., when remove migration
+ - will create two files in this folder 
+    -file1 -> timestamp_Initial.cs
+    -file2 -> AppDbContextModelSnapShot.cs
+            has snapshot to datbase now 
+            and this file is constant , content change after each migration but do not create another file
+    - but with each migration , u create file contain up and down like this [timestamp_Initial.cs]
+
+  - `Update-Database` (applies to DB: creates "AcademyCFM" database with tables and seeded data).
+
+A special table "__EFMigrationsHistory" tracks applied migrations. save all updates that u create [versions]
+
+//if u want to remove migrations , u will use -> Remove-Migration and if he told u that applies on DB
+use Remove-Migration -Force
+
+// U can use CLI dotnet , Terminal 
+dotnet ef migrations add initial 
+dotnet ef database update 
+
+
+// u can edit files generated , on your reposibility
+#### Step 6: Making Changes and New Migrations
+Suppose we split Instructor Name into FirstName and LastName.
+
+- Update "Instructor.cs": Replace Name with FirstName and LastName (both strings).
+namespace EF010.Entities
+{
+    public class Instructor
+    {
+        public int Id { get; set; }
+        public string? FName { get; set; }
+        public string? LName { get; set; }
+
+    }
+}
+
+
+
+- Update configuration: Drop old column, add new ones (e.g., varchar(50), required).
+
+namespace EF010.Data.Config
+{
+
+    public class InstructorConfiguration : IEntityTypeConfiguration<Instructor>
+    {
+        public void Configure(EntityTypeBuilder<Instructor> builder)
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Id).ValueGeneratedNever();
+
+            builder.Property(x => x.FName)
+                .HasColumnType("VARCHAR") // to make it not [nvarcahr] be [varchar]
+                .HasMaxLength(50).IsRequired();
+
+
+            builder.Property(x => x.LName)
+            .HasColumnType("VARCHAR") // to make it not [nvarcahr] be [varchar]
+              .HasMaxLength(50).IsRequired();
+
+
+            builder.ToTable("Instructors");
+
+            builder.HasData(LoadInstructors());
+        }
+
+        private static List<Instructor> LoadInstructors()
+        {
+            return new List<Instructor>
+            {
+               new Instructor { Id = 1, FName = "Ahmed" , LName = "Abdullah"},
+               new Instructor { Id = 2, FName = "Yasmeen" , LName = "Moahmed"},
+               new Instructor { Id = 3, FName = "Khalid" , LName = "Hassan"},
+               new Instructor { Id = 4, FName = "Nadia" , LName = "Ali"},
+               new Instructor { Id = 5, FName = "Ahmed", LName = "Abdullah"}
+            };
+        }
+    }
+   
+}
+
+- Run `Add-Migration AddInstructorNames`.
+- Up(): ALTER TABLE to drop Name, add FirstName/LastName.
+- Down(): Reverse it.
+- `Update-Database` applies changes.
+
+The snapshot file ("AppDbContextModelSnapshot.cs") tracks the current DB state.
+
+
+
+
+
+
+
+
+#### Additional Notes
+- Rollback: `Update-Database LastMigrationName` or `Remove-Migration` (removes files, but not DB changes—use Update for that).
+- In complex projects with multiple contexts, use flags like `-Context AppDbContext`.
+- For configurations, see my previous episode on fluent API (link in description).
+- This is Code-First: Code drives the DB, not vice versa.
+
+In the next episode, we'll cover advanced migration techniques. See you then!

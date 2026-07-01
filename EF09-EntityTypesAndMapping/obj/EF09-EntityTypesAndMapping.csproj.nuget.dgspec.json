@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj": {}
+    "c:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj": {
+    "c:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj",
+        "projectUniqueName": "c:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj",
         "projectName": "EF09-EntityTypesAndMapping",
-        "projectPath": "C:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj",
+        "projectPath": "c:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\EF09-EntityTypesAndMapping.csproj",
         "packagesPath": "C:\\Users\\Professor\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\obj\\",
+        "outputPath": "c:\\Users\\Professor\\Desktop\\EF CORE\\EF09-EntityTypesAndMapping\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Professor\\AppData\\Roaming\\NuGet\\NuGet.Config"
